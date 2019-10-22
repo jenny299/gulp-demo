@@ -1,0 +1,27 @@
+{
+  "name": "gulp-demo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "autoprefixer": "^9.6.5",
+    "browser-sync": "^2.26.7",
+    "browserify": "^16.5.0",
+    "cssnano": "^4.1.10",
+    "del": "^5.1.0",
+    "gulp": "^4.0.0",
+    "gulp-file-include": "^2.1.0",
+    "gulp-postcss": "^8.0.0",
+    "gulp-sass": "^4.0.2",
+    "gulp-sourcemaps": "^2.6.5",
+    "gulp-util": "^3.0.8",
+    "tsify": "^4.0.1",
+    "typescript": "^3.6.4",
+    "vinyl-source-stream": "^2.0.0"
+  }
+}
