@@ -1,14 +1,15 @@
 const { series, parallel, src, dest, watch } = require('gulp');
 const del = require('del');
 const gutil = require('gulp-util');
+const inject = require('gulp-inject');
+const env = gutil.env.env;
+const isProduction = env === 'prod';
+var isBuild = false;
 
 // Lib for ts, js
 const browserify = require('browserify');
 const source = require('vinyl-source-stream');
 const tsify = require('tsify');
-
-// const typescript = require('gulp-typescript');
-// const tsProject = typescript.createProject('tsconfig.json');
 
 
 // Lib for css task
@@ -23,11 +24,12 @@ const browserSync = require('browser-sync');
 const paths = {
     files: {
         rootDist: 'dist/*',
-        tmpDist: '.tmp/*',
         html: 'src/**/*.html',
-        css: '.tmp/css/*.css',
-        js: '.tmp/js/*.js',
-        scss: 'src/*.scss',
+        tmpDist: '.tmp/*',
+        tmpCss: '.tmp/**/*.css',
+        tmpJs: '.tmp/**/*.js',
+        tmpIndex: '.tmp/index.html',
+        scss: 'src/**/*.scss',
         ts: 'src/**/*.ts',
     },
     tmp: {
@@ -36,8 +38,6 @@ const paths = {
         js: '.tmp/js'
     },
     src: {
-        css: 'src/css',
-        js: 'src/js',
         root: './src'
     },
     dist: {
@@ -47,62 +47,94 @@ const paths = {
     }
 }
 
-const reload  = function() {
+const reload  = function(done) {
     browserSync.reload();
+    done();
 }
 
-const cleanDist = function() {
-    return del([paths.files.rootDist]);
+const clean = () => {
+    var pathsClean = [];
+    pathsClean.push(paths.files.tmpDist);
+
+    if (isBuild) {
+        pathsClean.push(paths.files.rootDist);
+    }
+    return del(pathsClean);
 }
 
-const cleanTmp = function() {
-    return del([paths.files.tmpDist]);
+const serve = function(done) {
+    const func = series(clean, copyTask, injectTask);
+    
+    return func(() => {
+        browserSync.init({
+            server: {
+                baseDir: paths.tmp.root
+            }
+        });
+        series(watchTask, reload)();
+        done();
+    })
 }
 
-const copyHTML = function() {
-    return src(paths.files.html)
-    .pipe(dest(paths.dist.root));
+const build = function(done) {
+    isBuild = true;
+    const funcExc = series(clean, copyTask, minifyCss, copyTmpToDist);
+
+    return funcExc(() => {
+        browserSync.init({
+            server: {
+                baseDir: paths.dist.root
+            }
+        });
+        series(injectTask, reload)();
+        done();
+    });
 }
 
-const htmlTask = function() {
-    return src(paths.files.html)
-    .pipe(dest(paths.tmp.root))
-    .pipe(browserSync.stream());
+const copyTmpToDist = () => {
+    return src('.tmp/**/*')
+    .pipe(dest('dist'));
 }
 
-const watchHtml = function() {
-    watch(paths.files.html, htmlTask);
+const copyTask = (done) => {
+    const func = parallel(processSCSS, processTS, processHtml, copyIndexFile);
+    return func(() => {
+        done();
+    })
+}
+
+const watchTask = () => {
+    return parallel(watchSCSS, watchTS, watchHtml)();
 }
 
 
-// Processing for css
-const transformScssToCss = function() {
+const injectTask = () => {
+    const rootPath = !isBuild ? '.tmp' : 'dist';
+    const jsPath = rootPath + '/**/*.js';
+    const cssPath = rootPath + '/**/*.css';
+
+    console.log('inject task called ---------');
+    console.log(jsPath);
+    console.log(cssPath);
+
+    return src('src/index.html')
+    .pipe(inject(src(jsPath), {ignorePath: rootPath, addRootSlash: false}))
+    .pipe(inject(src(cssPath), {ignorePath: rootPath, addRootSlash: false}))
+    .pipe(dest(rootPath));
+}
+
+const processSCSS = () => {
     return src(paths.files.scss)
+    .pipe(sass())
     .pipe(sourcemap.init())
     .pipe(sass().on('error', sass.logError))
     .pipe(sourcemap.write('.'))
     .pipe(dest(paths.tmp.css))
     .pipe(browserSync.stream());
-} 
-
-const watchCss = function() {
-    watch(paths.files.scss, transformScssToCss);
 }
 
-const minifyCss = function() {
-    return src(paths.files.css)
-    .pipe(postcss([autoprefixer(), cssnano()]))
-    .pipe(dest(paths.dist.css));
-}
-
-const buildCss = function(cb) {
-    series(transformScssToCss, minifyCss)();
-    cb();
-}
-
-// Processing for js
-const transformTSToJs = function() {
-    const production = gutil.env.type = 'production';
+const processTS = () => {
+    const production = env === 'prod';
     return browserify({
         basedir: '.',
         debug: !production,
@@ -117,65 +149,40 @@ const transformTSToJs = function() {
     .pipe(browserSync.stream());
 }
 
-const watchJS = function() {
-    watch(paths.files.ts, transformTSToJs);
+const processHtml = () => {
+    return src([paths.files.html, '!src/index.html'])
+    .pipe(dest(paths.tmp.root))
+    .pipe(browserSync.stream());
 }
 
-const copyJs = function() {
-    return src(paths.files.js)
-    .pipe(dest(paths.dist.js));
+const copyIndexFile = () => {
+    return src('src/index.html')
+    .pipe(dest(paths.tmp.root));
 }
 
-const buildJS = function(cb) {
-    console.log('buildJs called...');
-    series(transformTSToJs, copyJs)();
-    cb();
+const watchSCSS = () => {
+    watch(paths.files.scss, processSCSS);
 }
 
-const watchTask = function() {
-    browserSync.init({
-        server: {
-            baseDir: paths.tmp.root
-        }
-    });
-
-    series(cleanTmp)();
-    series(transformScssToCss, watchCss, reload)();
-    series(transformTSToJs, watchJS,  reload)();
-    series(htmlTask, watchHtml, reload)();
+const watchTS = () => {
+    watch(paths.files.ts, processTS);
 }
 
-const build = function(cb) {
-    browserSync.init({
-        server: {
-            baseDir: paths.dist.root
-        }
-    });
-    series(cleanDist, parallel(copyHTML, buildCss, buildJS), reload)();
-    cb();
+
+const watchHtml = () => {
+    watch(paths.files.html, processHtml);
 }
 
+
+const minifyCss = () => {
+    return src(paths.files.tmpCss)
+    .pipe(postcss([autoprefixer(), cssnano()]))
+    .pipe(dest(paths.tmp.root));
+}
+
+
+exports.serve = serve;
 exports.build = build;
+exports.default = build;
 
-exports.default = watchTask;
-
-
-
-
-
-// Js Task
-// const browserifyTask = function() {
-//     return browserify({
-//         basedir: '.',
-//         debug: true,
-//         entries: ['src/main.ts'],
-//         cache: {},
-//         packageCache: {}
-//     })
-//     .plugin(tsify)
-//     .bundle()
-//     .pipe(source('bundle.js'))
-//     .pipe(dest(outputs.dest))
-//     .pipe(browserSync.stream());
-// }
-
+exports.processSCSS = processSCSS;
