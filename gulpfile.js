@@ -2,6 +2,7 @@ const { series, parallel, src, dest, watch } = require('gulp');
 const del = require('del');
 const gutil = require('gulp-util');
 const inject = require('gulp-inject');
+const browserSync = require('browser-sync');
 const env = gutil.env.env;
 const isProduction = env === 'prod';
 var isBuild = false;
@@ -19,7 +20,9 @@ const postcss = require('gulp-postcss');
 const autoprefixer = require('autoprefixer');
 const cssnano = require('cssnano');
 
-const browserSync = require('browser-sync');
+// Lib for images
+const imagemin = require('gulp-imagemin');
+const cache = require('gulp-cache')
 
 const paths = {
     files: {
@@ -31,13 +34,15 @@ const paths = {
         tmpIndex: '.tmp/index.html',
         scss: 'src/**/*.scss',
         ts: 'src/**/*.ts',
-        srcIndex: 'src/index.html'
+        srcIndex: 'src/index.html',
+        images: 'assets/images/*'
     },
     tmp: {
         root: './.tmp', 
         rootDir: '.tmp',
         css: '.tmp/css',
-        js: '.tmp/js'
+        js: '.tmp/js',
+        images: '.tmp/images'
     },
     src: {
         root: './src'
@@ -47,9 +52,14 @@ const paths = {
         rootDir: 'dist',
         js: 'dist/js',
         css: 'dist/css',
+        images: '.tmp/images'
+    },
+    options: {
+        imagemin: { optimizationLevel: 3, progressive: true, interlaced: true }
     }
 }
 
+// Common tasks
 const reload  = function(done) {
     browserSync.reload();
     done();
@@ -100,16 +110,27 @@ const copyTmpToDist = () => {
 }
 
 const copyTask = (done) => {
-    const func = parallel(processSCSS, processTS, processHtml, copyIndexFile);
+    const func = parallel(processSCSS, processTS, processHtml, copyIndexFile, processImages);
     return func(() => {
         done();
     })
 }
 
 const watchTask = () => {
-    return parallel(watchSCSS, watchTS, watchHtml)();
+    return parallel(watchSCSS, watchTS, watchHtml, watchImages)();
 }
 
+// HTML compiler
+const processHtml = () => {
+    return src([paths.files.html, '!' + paths.files.srcIndex])
+    .pipe(dest(paths.tmp.root))
+    .pipe(browserSync.stream());
+}
+
+const copyIndexFile = () => {
+    return src(paths.files.srcIndex)
+    .pipe(dest(paths.tmp.root));
+}
 
 const injectTask = () => {
     const rootPath = !isBuild ? paths.tmp.rootDir : paths.dist.rootDir;
@@ -121,6 +142,11 @@ const injectTask = () => {
     .pipe(dest(rootPath));
 }
 
+const watchHtml = () => {
+    watch(paths.files.html, processHtml);
+}
+
+// SCSS compiler
 const processSCSS = () => {
     return src(paths.files.scss)
     .pipe(sass())
@@ -131,6 +157,17 @@ const processSCSS = () => {
     .pipe(browserSync.stream());
 }
 
+const watchSCSS = () => {
+    watch(paths.files.scss, processSCSS);
+}
+
+const minifyCss = () => {
+    return src(paths.files.tmpCss)
+    .pipe(postcss([autoprefixer(), cssnano()]))
+    .pipe(dest(paths.tmp.root));
+}
+
+// TS Compiler
 const processTS = () => {
     const production = env === 'prod';
     return browserify({
@@ -147,37 +184,20 @@ const processTS = () => {
     .pipe(browserSync.stream());
 }
 
-const processHtml = () => {
-    return src([paths.files.html, '!' + paths.files.srcIndex])
-    .pipe(dest(paths.tmp.root))
-    .pipe(browserSync.stream());
-}
-
-const copyIndexFile = () => {
-    return src(paths.files.srcIndex)
-    .pipe(dest(paths.tmp.root));
-}
-
-const watchSCSS = () => {
-    watch(paths.files.scss, processSCSS);
-}
-
 const watchTS = () => {
     watch(paths.files.ts, processTS);
 }
 
-
-const watchHtml = () => {
-    watch(paths.files.html, processHtml);
+// Images task
+const processImages = () => {
+    return src(paths.files.images)
+    .pipe(cache(imagemin(paths.options.imagemin)))
+    .pipe(dest(paths.tmp.images));
 }
 
-
-const minifyCss = () => {
-    return src(paths.files.tmpCss)
-    .pipe(postcss([autoprefixer(), cssnano()]))
-    .pipe(dest(paths.tmp.root));
+const watchImages = () => {
+    watch(paths.files.images, processImages);
 }
-
 
 exports.serve = serve;
 exports.build = build;
