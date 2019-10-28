@@ -24,16 +24,18 @@ const browserSync = require('browser-sync');
 const paths = {
     files: {
         rootDist: 'dist/*',
-        html: 'src/**/*.html',
         tmpDist: '.tmp/*',
+        html: 'src/**/*.html',
         tmpCss: '.tmp/**/*.css',
         tmpJs: '.tmp/**/*.js',
         tmpIndex: '.tmp/index.html',
         scss: 'src/**/*.scss',
         ts: 'src/**/*.ts',
+        srcIndex: 'src/index.html'
     },
     tmp: {
-        root: './.tmp',
+        root: './.tmp', 
+        rootDir: '.tmp',
         css: '.tmp/css',
         js: '.tmp/js'
     },
@@ -42,6 +44,7 @@ const paths = {
     },
     dist: {
         root: './dist',
+        rootDir: 'dist',
         js: 'dist/js',
         css: 'dist/css',
     }
@@ -93,7 +96,7 @@ const build = function(done) {
 
 const copyTmpToDist = () => {
     return src('.tmp/**/*')
-    .pipe(dest('dist'));
+    .pipe(dest(paths.dist.root));
 }
 
 const copyTask = (done) => {
@@ -109,14 +112,9 @@ const watchTask = () => {
 
 
 const injectTask = () => {
-    const rootPath = !isBuild ? '.tmp' : 'dist';
+    const rootPath = !isBuild ? paths.tmp.rootDir : paths.dist.rootDir;
     const jsPath = rootPath + '/**/*.js';
     const cssPath = rootPath + '/**/*.css';
-
-    console.log('inject task called ---------');
-    console.log(jsPath);
-    console.log(cssPath);
-
     return src('src/index.html')
     .pipe(inject(src(jsPath), {ignorePath: rootPath, addRootSlash: false}))
     .pipe(inject(src(cssPath), {ignorePath: rootPath, addRootSlash: false}))
@@ -150,13 +148,13 @@ const processTS = () => {
 }
 
 const processHtml = () => {
-    return src([paths.files.html, '!src/index.html'])
+    return src([paths.files.html, '!' + paths.files.srcIndex])
     .pipe(dest(paths.tmp.root))
     .pipe(browserSync.stream());
 }
 
 const copyIndexFile = () => {
-    return src('src/index.html')
+    return src(paths.files.srcIndex)
     .pipe(dest(paths.tmp.root));
 }
 
@@ -184,5 +182,3 @@ const minifyCss = () => {
 exports.serve = serve;
 exports.build = build;
 exports.default = build;
-
-exports.processSCSS = processSCSS;
